@@ -1,25 +1,13 @@
-/**
- * MemoryManager
- *
- * Coordinates short-term and long-term memory access.
- */
-import { ShortTermMemory } from './ShortTermMemory';
-import { LongTermMemory } from './LongTermMemory';
 import { MemoryDatabase } from './MemoryDatabase';
 
 export class MemoryManager {
-  private stm: ShortTermMemory;
-  private ltm: LongTermMemory;
-  private db: MemoryDatabase;
+  private db = new MemoryDatabase();
 
-  constructor() {
-    this.db = new MemoryDatabase();
-    this.stm = new ShortTermMemory();
-    this.ltm = new LongTermMemory(this.db);
+  save(key: string, value: any) {
+    this.db.set(key, value);
   }
 
-  async initialize() {
-    await this.db.connect();
-    // TODO: load LTM entries
+  load(key: string) {
+    return this.db.get(key);
   }
 }

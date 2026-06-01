@@ -3,10 +3,10 @@
  *
  * High-level coordinator that wires subsystems together and runs the main loop.
  */
-import { GoalManager } from './core/GoalManager';
-import { Planner } from './core/Planner';
-import { PersonalityManager } from './core/PersonalityManager';
-import { ContextManager } from './core/ContextManager';
+import { GoalManager } from './GoalManager';
+import { Planner } from './Planner';
+import { PersonalityManager } from './PersonalityManager';
+import { ContextManager } from './ContextManager';
 
 export class AIEngine {
   private goalManager: GoalManager;

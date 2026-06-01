@@ -14,11 +14,11 @@ export class LongTermMemory {
 
   // TODO: typed methods to store preferences, memories, history
   async save(key: string, value: any) {
-    await this.db.save(key, JSON.stringify(value));
+    await this.db.set(key, JSON.stringify(value));
   }
 
   async load(key: string) {
-    const v = await this.db.load(key);
+    const v = await this.db.get(key);
     return v ? JSON.parse(v) : null;
   }
 }

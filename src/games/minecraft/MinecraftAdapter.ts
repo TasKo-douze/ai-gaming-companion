@@ -4,7 +4,7 @@
  * Implementation of GameAdapter using Mineflayer.
  * NOTE: This file provides a skeleton and TODOs to finish implementation.
  */
-import { GameAdapter } from '../games/GameAdapter';
+import { GameAdapter } from '../GameAdapter';
 // import mineflayer from 'mineflayer';
 
 export class MinecraftAdapter implements GameAdapter {
