@@ -32,6 +32,8 @@ export class GoalManager {
         return this.createGoal(GoalType.COME_HERE, 15, { username });
       case Intent.STAY_HERE:
         return this.createGoal(GoalType.STAY_HERE, 20, { username });
+      case Intent.COLLECT_WOOD:
+        return this.createGoal(GoalType.COLLECT_WOOD, 5, { username });
       case Intent.HELP:
         return this.createGoal(GoalType.IDLE, 0, { reason: 'help' });
       case Intent.GREETING:
