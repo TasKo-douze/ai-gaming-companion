@@ -10,6 +10,7 @@ import { TaskQueue } from '../../tasks/TaskQueue';
 import { TaskExecutor } from '../../tasks/TaskExecutor';
 import { GoalManager } from '../../goals/GoalManager';
 import { ActionExecutor } from '../../intents/ActionExecutor';
+import { MemoryManager } from '../../memory/MemoryManager';
 
 export interface MinecraftConnectOptions {
   host?: string;
@@ -22,6 +23,7 @@ export interface MinecraftConnectOptions {
 export class MinecraftAdapter implements GameAdapter {
   private bot: Bot | null = null;
   private connected = false;
+  private memoryManager: MemoryManager | null = null;
   private emitter = new EventEmitter();
   private navigator: MinecraftNavigator | null = null;
 
@@ -78,6 +80,7 @@ export class MinecraftAdapter implements GameAdapter {
           this.taskPlanner = new TaskPlanner();
           this.taskQueue = new TaskQueue();
           this.taskExecutor = new TaskExecutor(this, this.navigator, this.stateManager);
+          this.memoryManager = new MemoryManager();
           this.actionExecutor = new ActionExecutor(
             this,
             this.navigator,
@@ -85,7 +88,8 @@ export class MinecraftAdapter implements GameAdapter {
             this.taskPlanner,
             this.taskQueue,
             this.taskExecutor,
-            this.goalManager
+            this.goalManager,
+            this.memoryManager
           );
         } catch (e) {
           console.error('[minecraft] failed to initialize intent/task system', e);
