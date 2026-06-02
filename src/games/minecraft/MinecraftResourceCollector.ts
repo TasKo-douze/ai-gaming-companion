@@ -1,6 +1,7 @@
 import { Bot } from 'mineflayer';
 import { pathfinder, Movements, goals } from 'mineflayer-pathfinder';
 import mcDataLib from 'minecraft-data';
+import { Vec3 } from 'vec3';
 
 export class MinecraftResourceCollector {
   private bot: Bot;
@@ -32,6 +33,10 @@ export class MinecraftResourceCollector {
     });
   }
 
+  private floorVec(pos: any): Vec3 {
+    return new Vec3(Math.floor(pos.x), Math.floor(pos.y), Math.floor(pos.z));
+  }
+
   private findWoodCandidates(maxDistance = 16): any[] {
     const mcData = mcDataLib(this.bot.version as string);
 
@@ -61,7 +66,7 @@ export class MinecraftResourceCollector {
 
     // Map to block objects and filter out nulls
     const blocks = positions
-      .map(pos => (this.bot as any).blockAt(pos))
+      .map(pos => (this.bot as any).blockAt(this.floorVec(pos)))
       .filter((b: any) => b && b.type && b.position);
 
     return blocks;
@@ -112,7 +117,8 @@ export class MinecraftResourceCollector {
     for (const blk of sorted) {
       try {
         // Basic checks
-        const name = (mcDataLib(this.bot.version as string).blocks as any)[blk.type]?.name || 'unknown';
+        const mcData = mcDataLib(this.bot.version as string);
+        const name = (mcData.blocks as any)[blk.type]?.name || 'unknown';
         console.log(`[collector] trying wood block ${name} at ${blk.position.x},${blk.position.y},${blk.position.z}`);
 
         // prefer low blocks (within reachable height)
@@ -137,9 +143,9 @@ export class MinecraftResourceCollector {
           const px = blk.position.x + off.x;
           const pz = blk.position.z + off.z;
           const py = blk.position.y; // standing at same height
-          const blockBelow = (this.bot as any).blockAt({ x: px, y: py - 1, z: pz });
-          const blockAtFeet = (this.bot as any).blockAt({ x: px, y: py, z: pz });
-          const blockHead = (this.bot as any).blockAt({ x: px, y: py + 1, z: pz });
+          const blockBelow = (this.bot as any).blockAt(this.floorVec({ x: px, y: py - 1, z: pz }));
+          const blockAtFeet = (this.bot as any).blockAt(this.floorVec({ x: px, y: py, z: pz }));
+          const blockHead = (this.bot as any).blockAt(this.floorVec({ x: px, y: py + 1, z: pz }));
           const belowSolid = blockBelow && blockBelow.type !== 0;
           const feetEmpty = !blockAtFeet || blockAtFeet.type === 0;
           const headEmpty = !blockHead || blockHead.type === 0;
