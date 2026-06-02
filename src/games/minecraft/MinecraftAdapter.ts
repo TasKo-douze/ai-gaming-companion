@@ -1,5 +1,5 @@
 import { GameAdapter } from '../GameAdapter';
-import mineflayer, { Bot } from 'mineflayer';
+import { createBot, Bot } from 'mineflayer';
 
 export interface MinecraftConnectOptions {
   host?: string;
@@ -21,7 +21,7 @@ export interface MinecraftConnectOptions {
  * the bot lifecycle and basic events as requested.
  */
 
-import { GameAdapter } from '../GameAdapter';
+
 // import mineflayer from 'mineflayer';
 
 export class MinecraftAdapter implements GameAdapter {
@@ -48,7 +48,7 @@ export class MinecraftAdapter implements GameAdapter {
 
     return new Promise<void>((resolve, reject) => {
       try {
-        this.bot = mineflayer.createBot({ host, port, username, password, version: options?.version });
+        this.bot = createBot({ host, port, username, password, version: options?.version });
       } catch (err) {
         console.error('[minecraft] failed to create bot', err);
         return reject(err);
