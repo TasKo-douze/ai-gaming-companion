@@ -9,6 +9,8 @@ import mcDataLib from 'minecraft-data';
  * Responsibilities:
  * - follow a player entity by username
  * - stop following
+ * - come to a player's current position
+ * - stay at current position
  *
  * This class does not listen to chat directly; it exposes methods that
  * can be called by MinecraftAdapter in response to chat commands.
@@ -19,6 +21,8 @@ export class MinecraftNavigator {
   private following: boolean = false;
   private currentGoal: any = null;
   private targetUsername: string | null = null;
+  private staying: boolean = false;
+  private stayPosition: { x: number; y: number; z: number } | null = null;
 
   constructor(bot: Bot) {
     this.bot = bot;
@@ -80,6 +84,7 @@ export class MinecraftNavigator {
     this.currentGoal = goal;
     (this.bot as any).pathfinder.setGoal(goal, true);
     this.following = true;
+    this.staying = false;
     this.targetUsername = username;
     console.log(`[navigator] started following ${username}`);
   }
@@ -102,10 +107,92 @@ export class MinecraftNavigator {
     this.currentGoal = null;
     const prev = this.targetUsername;
     this.targetUsername = null;
+    this.staying = false;
+    this.stayPosition = null;
     console.log(`[navigator] stopped following ${prev || 'target'}`);
+  }
+
+  /**
+   * Move to the player's current position (one-shot).
+   */
+  async comeToPlayer(username: string): Promise<void> {
+    if (!this.bot) throw new Error('Bot not initialized');
+    const playerObj = this.bot.players[username];
+    const entity = playerObj && playerObj.entity ? playerObj.entity : null;
+    if (!entity) {
+      // Try find among entities
+      for (const id in this.bot.entities) {
+        const e = this.bot.entities[id];
+        if (e && (e.username === username || e.name === username)) {
+          await this.moveToPosition(e.position);
+          return;
+        }
+      }
+      throw new Error(`Player entity for '${username}' not found`);
+    }
+
+    await this.moveToPosition(entity.position);
+    // not setting following; this is a one-shot move
+  }
+
+  private async moveToPosition(position: any): Promise<void> {
+    if (!(this.bot as any).pathfinder) throw new Error('Pathfinder not initialized');
+    try {
+      // Cancel any existing goal
+      try { (this.bot as any).pathfinder.setGoal(null); } catch (e) { /* ignore */ }
+
+      const goal = new goals.GoalNear(position.x, position.y, position.z, 1);
+      this.currentGoal = goal;
+      (this.bot as any).pathfinder.setGoal(goal, true);
+      this.following = false;
+      this.staying = false;
+      this.stayPosition = null;
+      console.log(`[navigator] moving to position x=${position.x} y=${position.y} z=${position.z}`);
+    } catch (e) {
+      throw e;
+    }
+  }
+
+  /**
+   * Stop any navigation and remain at current position.
+   */
+  async stayHere(): Promise<void> {
+    if (!(this.bot as any).pathfinder) return;
+    try {
+      // Stop movement and clear goal
+      if (typeof (this.bot as any).pathfinder.stop === 'function') {
+        (this.bot as any).pathfinder.stop();
+      }
+      (this.bot as any).pathfinder.setGoal(null);
+    } catch (e) {
+      // ignore
+    }
+    // record stay position as current block center
+    if (this.bot.entity && this.bot.entity.position) {
+      const p = this.bot.entity.position;
+      this.stayPosition = { x: Math.floor(p.x), y: Math.floor(p.y), z: Math.floor(p.z) };
+    } else {
+      this.stayPosition = null;
+    }
+    this.following = false;
+    this.currentGoal = null;
+    this.staying = true;
+    console.log('[navigator] staying at position', this.stayPosition);
   }
 
   isFollowing(): boolean {
     return this.following;
+  }
+
+  isStaying(): boolean {
+    return this.staying;
+  }
+
+  getPosition(): { x: number; y: number; z: number } | null {
+    if (this.bot.entity && this.bot.entity.position) {
+      const p = this.bot.entity.position;
+      return { x: Math.floor(p.x), y: Math.floor(p.y), z: Math.floor(p.z) };
+    }
+    return null;
   }
 }

@@ -23,3 +23,23 @@ export function createStopFollowingTask(): StopFollowingTask {
     priority: 20,
   } as StopFollowingTask;
 }
+
+export type ComeToPlayerTask = Task & { name: 'COME_TO_PLAYER'; data: { username: string } };
+export function createComeToPlayerTask(username: string): ComeToPlayerTask {
+  return {
+    id: `come-${username}-${Date.now()}`,
+    name: 'COME_TO_PLAYER',
+    data: { username },
+    priority: 15,
+  } as ComeToPlayerTask;
+}
+
+export type StayHereTask = Task & { name: 'STAY_HERE'; data?: null };
+export function createStayHereTask(): StayHereTask {
+  return {
+    id: `stay-${Date.now()}`,
+    name: 'STAY_HERE',
+    data: null,
+    priority: 20,
+  } as StayHereTask;
+}

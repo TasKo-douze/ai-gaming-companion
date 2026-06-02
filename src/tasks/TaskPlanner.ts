@@ -1,6 +1,6 @@
 import { Intent } from '../intents/Intent';
 import { Task } from './Task';
-import { createFollowPlayerTask, createStopFollowingTask } from './TaskTypes';
+import { createFollowPlayerTask, createStopFollowingTask, createComeToPlayerTask, createStayHereTask } from './TaskTypes';
 
 export class TaskPlanner {
   constructor() {}
@@ -14,6 +14,10 @@ export class TaskPlanner {
         return [createFollowPlayerTask(username)];
       case Intent.STOP_FOLLOWING:
         return [createStopFollowingTask()];
+      case Intent.COME_HERE:
+        return [createComeToPlayerTask(username)];
+      case Intent.STAY_HERE:
+        return [createStayHereTask()];
       default:
         return [];
     }

@@ -6,5 +6,8 @@ export enum Intent {
   UNKNOWN = 'UNKNOWN',
   PING = 'PING',
   REMEMBER_ME = 'REMEMBER_ME',
-  WHO_AM_I = 'WHO_AM_I'
+  WHO_AM_I = 'WHO_AM_I',
+  COME_HERE = 'COME_HERE',
+  STAY_HERE = 'STAY_HERE',
+  WHERE_ARE_YOU = 'WHERE_ARE_YOU'
 }
