@@ -168,22 +168,37 @@ export class MinecraftResourceCollector {
           await this.waitUntilNear(standPos, 1.5, 30000);
         } catch (e) {
           console.log('[collector] failed to move to candidate, skipping');
-          try { (this.bot as any).pathfinder.setGoal(null); } catch (err) {}
+          try {
+            if ((this.bot as any).pathfinder && typeof (this.bot as any).pathfinder.stop === 'function') {
+              try { (this.bot as any).pathfinder.stop(); } catch (err) { /* ignore */ }
+            }
+            try { (this.bot as any).pathfinder.setGoal(null); } catch (err) { /* ignore */ }
+          } catch (err) {}
           continue;
         }
 
         // Once near, confirm block still present and is desirable
-        const fresh = (this.bot as any).blockAt(blk.position);
+        const fresh = (this.bot as any).blockAt(this.floorVec(blk.position));
         if (!fresh || fresh.type === 0) {
           console.log('[collector] candidate disappeared, trying next');
-          try { (this.bot as any).pathfinder.setGoal(null); } catch (err) {}
+          try {
+            if ((this.bot as any).pathfinder && typeof (this.bot as any).pathfinder.stop === 'function') {
+              try { (this.bot as any).pathfinder.stop(); } catch (err) { /* ignore */ }
+            }
+            try { (this.bot as any).pathfinder.setGoal(null); } catch (err) { /* ignore */ }
+          } catch (err) {}
           continue;
         }
 
         const freshName = (mcDataLib(this.bot.version as string).blocks as any)[fresh.type]?.name || 'unknown';
         if (/leaf|leaves?/i.test(String(freshName))) {
           console.log('[collector] candidate is leaves, skipping');
-          try { (this.bot as any).pathfinder.setGoal(null); } catch (err) {}
+          try {
+            if ((this.bot as any).pathfinder && typeof (this.bot as any).pathfinder.stop === 'function') {
+              try { (this.bot as any).pathfinder.stop(); } catch (err) { /* ignore */ }
+            }
+            try { (this.bot as any).pathfinder.setGoal(null); } catch (err) { /* ignore */ }
+          } catch (err) {}
           continue;
         }
 
@@ -192,7 +207,12 @@ export class MinecraftResourceCollector {
           const canDig = (this.bot as any).canDigBlock(fresh);
           if (!canDig) {
             console.log('[collector] cannot dig this block, skipping');
-            try { (this.bot as any).pathfinder.setGoal(null); } catch (err) {}
+            try {
+              if ((this.bot as any).pathfinder && typeof (this.bot as any).pathfinder.stop === 'function') {
+                try { (this.bot as any).pathfinder.stop(); } catch (err) { /* ignore */ }
+              }
+              try { (this.bot as any).pathfinder.setGoal(null); } catch (err) { /* ignore */ }
+            } catch (err) {}
             continue;
           }
         }
@@ -210,29 +230,51 @@ export class MinecraftResourceCollector {
           });
 
           // verify block removed
-          const after = (this.bot as any).blockAt(fresh.position);
+          const after = (this.bot as any).blockAt(this.floorVec(fresh.position));
           if (!after || after.type === 0) {
+            // Ensure navigation completely stopped
+            try {
+              if ((this.bot as any).pathfinder && typeof (this.bot as any).pathfinder.stop === 'function') {
+                try { (this.bot as any).pathfinder.stop(); } catch (err) { /* ignore */ }
+              }
+              try { (this.bot as any).pathfinder.setGoal(null); } catch (err) { /* ignore */ }
+            } catch (err) {}
+
             console.log('[collector] wood block collected');
-            try { (this.bot as any).pathfinder.setGoal(null); } catch (err) {}
             return;
           } else {
             console.log('[collector] candidate failed: block still present after dig');
             lastErr = new Error('Block still present after dig');
-            try { (this.bot as any).pathfinder.setGoal(null); } catch (err) {}
+            try {
+              if ((this.bot as any).pathfinder && typeof (this.bot as any).pathfinder.stop === 'function') {
+                try { (this.bot as any).pathfinder.stop(); } catch (err) { /* ignore */ }
+              }
+              try { (this.bot as any).pathfinder.setGoal(null); } catch (err) { /* ignore */ }
+            } catch (err) {}
             continue;
           }
         } catch (e: unknown) {
           const reason = e instanceof Error ? e.message : String(e);
           console.log(`[collector] candidate failed: ${reason}`);
           lastErr = e instanceof Error ? e : new Error(String(e));
-          try { (this.bot as any).pathfinder.setGoal(null); } catch (err) {}
+          try {
+            if ((this.bot as any).pathfinder && typeof (this.bot as any).pathfinder.stop === 'function') {
+              try { (this.bot as any).pathfinder.stop(); } catch (err) { /* ignore */ }
+            }
+            try { (this.bot as any).pathfinder.setGoal(null); } catch (err) { /* ignore */ }
+          } catch (err) {}
           continue;
         }
       } catch (e: unknown) {
         const reason = e instanceof Error ? e.message : String(e);
         console.log(`[collector] candidate failed: ${reason}`);
         lastErr = e instanceof Error ? e : new Error(String(e));
-        try { (this.bot as any).pathfinder.setGoal(null); } catch (err) {}
+        try {
+          if ((this.bot as any).pathfinder && typeof (this.bot as any).pathfinder.stop === 'function') {
+            try { (this.bot as any).pathfinder.stop(); } catch (err) { /* ignore */ }
+          }
+          try { (this.bot as any).pathfinder.setGoal(null); } catch (err) { /* ignore */ }
+        } catch (err) {}
         continue;
       }
     }
