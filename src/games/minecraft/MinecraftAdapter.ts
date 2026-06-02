@@ -1,5 +1,7 @@
 import { GameAdapter } from '../GameAdapter';
-import { createBot, Bot } from 'mineflayer';
+import mineflayer, { Bot } from 'mineflayer';
+import { EventEmitter } from 'events';
+import { ChatMessage } from './IMinecraftChat';
 
 export interface MinecraftConnectOptions {
   host?: string;
@@ -12,21 +14,19 @@ export interface MinecraftConnectOptions {
 /**
  * MinecraftAdapter
  *
- * Minimal Mineflayer-based adapter that creates a bot and exposes connect()/disconnect().
- * - Connects using environment variables if options are not provided.
- * - Registers basic event handlers: spawn, chat, end, error, kicked, death
- * - Emits clear console logs for each event.
+ * Minimal Mineflayer-based adapter that creates a bot, exposes connect()/disconnect()
+ * and provides a chat event publication mechanism.
  *
- * Note: This implementation intentionally contains NO AI logic. It only manages
- * the bot lifecycle and basic events as requested.
+ * Responsibilities added in this change:
+ * - listen to Minecraft chat and emit typed chat events via EventEmitter
+ * - ignore messages sent by the bot itself
+ * - provide sendChatMessage(message: string)
+ * - provide add/remove chat listener helpers
  */
-
-
-// import mineflayer from 'mineflayer';
-
 export class MinecraftAdapter implements GameAdapter {
   private bot: Bot | null = null;
   private connected = false;
+  private emitter = new EventEmitter();
 
   constructor() {}
 
@@ -48,7 +48,7 @@ export class MinecraftAdapter implements GameAdapter {
 
     return new Promise<void>((resolve, reject) => {
       try {
-        this.bot = createBot({ host, port, username, password, version: options?.version });
+        this.bot = mineflayer.createBot({ host, port, username, password, version: options?.version });
       } catch (err) {
         console.error('[minecraft] failed to create bot', err);
         return reject(err);
@@ -64,8 +64,31 @@ export class MinecraftAdapter implements GameAdapter {
       };
 
       const onChat = (username: string, message: string) => {
-        // Log chat messages. Avoid logging all bot messages to reduce noise.
+        // Ignore messages from the bot itself
+        try {
+          const botName = (this.bot && (this.bot.username || (this.bot as any).entity?.username)) || null;
+          if (botName && username === botName) return;
+        } catch (e) {
+          // ignore any lookup error and proceed
+        }
+
         console.log(`[minecraft][chat] <${username}> ${message}`);
+
+        const chatMsg: ChatMessage = { username, message };
+        // Emit event for other modules to consume
+        this.emitter.emit('chat', chatMsg);
+
+        // Built-in simple command responses (no generative AI)
+        const cmd = (message || '').trim().toLowerCase();
+        if (cmd === 'ping') {
+          // respond with pong
+          this.sendChatMessage('pong').catch(err => console.error('[minecraft] failed to send pong', err));
+        } else if (cmd === 'hello') {
+          this.sendChatMessage('hello').catch(err => console.error('[minecraft] failed to send hello', err));
+        } else if (cmd === 'help') {
+          this.sendChatMessage('Available commands: ping, hello, help')
+            .catch(err => console.error('[minecraft] failed to send help', err));
+        }
       };
 
       const onEnd = () => {
@@ -140,13 +163,9 @@ export class MinecraftAdapter implements GameAdapter {
 
     try {
       console.log('[minecraft] disconnecting bot');
-      // Attempt graceful end
-      // mineflayer Bot has an `end()` method on the client socket; call end if available
-      // Also try quit command as a fallback
       try {
         // @ts-ignore - runtime check
         if (typeof this.bot.quit === 'function') {
-          // some versions expose quit()
           // @ts-ignore
           this.bot.quit();
         } else if (typeof (this.bot as any).end === 'function') {
@@ -163,9 +182,30 @@ export class MinecraftAdapter implements GameAdapter {
     }
   }
 
+  /**
+   * Send a chat message to the server from the bot.
+   */
+  async sendChatMessage(message: string): Promise<void> {
+    if (!this.bot) throw new Error('Bot not connected');
+    this.bot.chat(message);
+  }
+
+  /**
+   * Register a chat listener. Listener receives a ChatMessage object.
+   */
+  addChatListener(listener: (msg: ChatMessage) => void): void {
+    this.emitter.on('chat', listener);
+  }
+
+  /**
+   * Remove a specific chat listener.
+   */
+  removeChatListener(listener: (msg: ChatMessage) => void): void {
+    this.emitter.off('chat', listener);
+  }
+
   async getWorldState(): Promise<any> {
     if (!this.bot) return null;
-    // Provide a minimal view for compatibility
     return {
       players: Object.keys(this.bot.players || {}),
       time: (this.bot.time && (this.bot.time.age || this.bot.time.worldAge)) || null,
@@ -180,11 +220,6 @@ export class MinecraftAdapter implements GameAdapter {
   async executeAction(_action: any): Promise<any> {
     // No action execution in this minimal adapter
     return null;
-  }
-
-  async sendChatMessage(msg: string): Promise<void> {
-    if (!this.bot) throw new Error('Bot not connected');
-    this.bot.chat(msg);
   }
 
   async getVisibleEntities(): Promise<any[]> {
