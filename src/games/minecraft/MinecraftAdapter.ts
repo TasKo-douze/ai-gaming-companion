@@ -5,6 +5,16 @@ import { ChatMessage } from './IMinecraftChat';
 import { MinecraftNavigator } from './MinecraftNavigator';
 import { MinecraftResourceCollector } from './MinecraftResourceCollector';
 
+// Intent/Goal/Task system imports
+import { IntentParser } from '../../intents/IntentParser';
+import { BotStateManager } from '../../intents/BotStateManager';
+import { TaskPlanner } from '../../tasks/TaskPlanner';
+import { TaskQueue } from '../../tasks/TaskQueue';
+import { TaskExecutor } from '../../tasks/TaskExecutor';
+import { GoalManager } from '../../goals/GoalManager';
+import { ActionExecutor } from '../../intents/ActionExecutor';
+import { MemoryManager } from '../../memory/MemoryManager';
+
 export interface MinecraftConnectOptions {
   host?: string;
   port?: number;
@@ -13,31 +23,25 @@ export interface MinecraftConnectOptions {
   version?: string;
 }
 
-/**
- * MinecraftAdapter
- *
- * Minimal Mineflayer-based adapter that creates a bot, exposes connect()/disconnect()
- * and provides a chat event publication mechanism.
- *
- * Responsibilities added in this change:
- * - listen to Minecraft chat and emit typed chat events via EventEmitter
- * - ignore messages sent by the bot itself
- * - provide sendChatMessage(message: string)
- * - provide add/remove chat listener helpers
- * - delegate navigation to MinecraftNavigator (follow/stop)
- */
 export class MinecraftAdapter implements GameAdapter {
   private bot: Bot | null = null;
   private connected = false;
   private emitter = new EventEmitter();
   private navigator: MinecraftNavigator | null = null;
+
+  // Intent/Goal/Task system
+  private intentParser: IntentParser | null = null;
+  private stateManager: BotStateManager | null = null;
+  private taskPlanner: TaskPlanner | null = null;
+  private taskQueue: TaskQueue | null = null;
+  private taskExecutor: TaskExecutor | null = null;
+  private goalManager: GoalManager | null = null;
+  private actionExecutor: ActionExecutor | null = null;
+  private memoryManager: MemoryManager | null = null;
   private resourceCollector: MinecraftResourceCollector | null = null;
 
   constructor() {}
 
-  /**
-   * Connects the mineflayer bot to a server. Resolves once the bot has spawned.
-   */
   async connect(options?: MinecraftConnectOptions): Promise<void> {
     if (this.connected) {
       console.log('[minecraft] already connected');
@@ -79,8 +83,12 @@ export class MinecraftAdapter implements GameAdapter {
           this.goalManager = new GoalManager();
           this.taskPlanner = new TaskPlanner();
           this.taskQueue = new TaskQueue();
-          this.taskExecutor = new TaskExecutor(this, this.navigator, this.stateManager);
           this.memoryManager = new MemoryManager();
+
+          // TaskExecutor expects adapter, navigator, stateManager, memoryManager
+          this.taskExecutor = new TaskExecutor(this, this.navigator, this.stateManager, this.memoryManager);
+
+          // ActionExecutor requires the remaining subsystems
           this.actionExecutor = new ActionExecutor(
             this,
             this.navigator,
@@ -94,9 +102,11 @@ export class MinecraftAdapter implements GameAdapter {
 
           // Initialize resource collector once taskExecutor is available
           try {
-            this.resourceCollector = new MinecraftResourceCollector(this.bot as Bot, this.navigator);
-            if (this.taskExecutor) {
-              this.taskExecutor.setResourceCollector(this.resourceCollector);
+            if (this.bot) {
+              this.resourceCollector = new MinecraftResourceCollector(this.bot as Bot, this.navigator);
+              if (this.taskExecutor) {
+                this.taskExecutor.setResourceCollector(this.resourceCollector);
+              }
             }
           } catch (e: unknown) {
             console.error('[minecraft] failed to initialize resource collector', e);
@@ -124,31 +134,14 @@ export class MinecraftAdapter implements GameAdapter {
         // Emit event for other modules to consume
         this.emitter.emit('chat', chatMsg);
 
-        // Built-in simple command responses (no generative AI)
-        const cmd = (message || '').trim().toLowerCase();
-        if (cmd === 'ping') {
-          // respond with pong
-          this.sendChatMessage('pong').catch(err => console.error('[minecraft] failed to send pong', err));
-        } else if (cmd === 'hello') {
-          this.sendChatMessage('hello').catch(err => console.error('[minecraft] failed to send hello', err));
-        } else if (cmd === 'help') {
-          this.sendChatMessage('Available commands: ping, hello, help, follow me / suis-moi, stop / arrête')
-            .catch(err => console.error('[minecraft] failed to send help', err));
-        } else if (cmd === 'suis-moi' || cmd === 'follow me') {
-          // Delegate follow to navigator
-          if (this.navigator) {
-            this.navigator.followPlayer(username).catch(err => console.error('[minecraft] follow failed', err));
-            this.sendChatMessage(`Je te suis, ${username}`).catch(err => console.error('[minecraft] failed to send follow confirmation', err));
-          } else {
-            this.sendChatMessage('Navigator not initialized').catch(() => {});
-          }
-        } else if (cmd === 'stop' || cmd === 'arrête' || cmd === 'arrête de me suivre') {
-          if (this.navigator) {
-            this.navigator.stopFollowing().catch(err => console.error('[minecraft] stop following failed', err));
-            this.sendChatMessage(`J'arrête de te suivre, ${username}`).catch(err => console.error('[minecraft] failed to send stop confirmation', err));
-          } else {
-            this.sendChatMessage('Navigator not initialized').catch(() => {});
-          }
+        // Parse intent and delegate to ActionExecutor
+        try {
+          if (!this.intentParser || !this.actionExecutor) return;
+          const parsed = this.intentParser.parse(message);
+          // fire and forget
+          this.actionExecutor.execute(parsed.intent, username).catch(err => console.error('[minecraft] action execute error', err));
+        } catch (e) {
+          console.error('[minecraft] failed to handle chat', e);
         }
       };
 
@@ -220,9 +213,6 @@ export class MinecraftAdapter implements GameAdapter {
     });
   }
 
-  /**
-   * Disconnects the bot and removes listeners.
-   */
   async disconnect(): Promise<void> {
     if (!this.bot) {
       console.log('[minecraft] bot is not running');
@@ -247,29 +237,26 @@ export class MinecraftAdapter implements GameAdapter {
       this.bot = null;
       this.connected = false;
       this.navigator = null;
-      this.resourceCollector = null;
+      this.intentParser = null;
+      this.stateManager = null;
+      this.taskPlanner = null;
+      this.taskQueue = null;
+      this.taskExecutor = null;
+      this.goalManager = null;
+      this.actionExecutor = null;
       console.log('[minecraft] bot disconnected');
     }
   }
 
-  /**
-   * Send a chat message to the server from the bot.
-   */
   async sendChatMessage(message: string): Promise<void> {
     if (!this.bot) throw new Error('Bot not connected');
     this.bot.chat(message);
   }
 
-  /**
-   * Register a chat listener. Listener receives a ChatMessage object.
-   */
   addChatListener(listener: (msg: ChatMessage) => void): void {
     this.emitter.on('chat', listener);
   }
 
-  /**
-   * Remove a specific chat listener.
-   */
   removeChatListener(listener: (msg: ChatMessage) => void): void {
     this.emitter.off('chat', listener);
   }
