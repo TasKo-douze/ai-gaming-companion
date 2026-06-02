@@ -1,7 +1,5 @@
 /**
- * Task
- *
- * Represents a unit of work the AI can perform.
+ * Task interface
  */
 export interface Task {
   id: string;

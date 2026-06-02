@@ -1,8 +1,3 @@
-/**
- * TaskQueue
- *
- * Simple priority queue for tasks.
- */
 import { Task } from './Task';
 
 export class TaskQueue {
@@ -18,4 +13,12 @@ export class TaskQueue {
   }
 
   peek(): Task | undefined { return this.queue[0]; }
+
+  size(): number { return this.queue.length; }
+
+  clear(): void { this.queue = []; }
+
+  isEmpty(): boolean { return this.queue.length === 0; }
+
+  list(): Task[] { return [...this.queue]; }
 }
