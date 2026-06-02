@@ -97,6 +97,59 @@ export class ActionExecutor {
         }
         return;
       }
+      case Intent.COME_HERE: {
+        const goal = this.goalManager.createGoalFromIntent(Intent.COME_HERE, username);
+        if (!goal) {
+          await this.safeSend('Unable to create come here goal');
+          return;
+        }
+        this.goalManager.setActive(goal.id);
+
+        const tasks = this.taskPlanner.plan(Intent.COME_HERE, username);
+        tasks.forEach(t => {
+          t.data = { ...(t.data || {}), goalId: goal.id };
+          this.taskQueue.push(t);
+        });
+
+        await this.safeSend(`J'arrive.`);
+        this.processQueue().catch(err => console.error('[action] processQueue error', err));
+        return;
+      }
+      case Intent.STAY_HERE: {
+        const goal = this.goalManager.createGoalFromIntent(Intent.STAY_HERE, username);
+        if (!goal) {
+          await this.safeSend('Unable to create stay here goal');
+          return;
+        }
+        this.goalManager.setActive(goal.id);
+
+        const tasks = this.taskPlanner.plan(Intent.STAY_HERE, username);
+        tasks.forEach(t => {
+          t.data = { ...(t.data || {}), goalId: goal.id };
+          this.taskQueue.push(t);
+        });
+
+        await this.safeSend(`Je reste ici.`);
+        this.processQueue().catch(err => console.error('[action] processQueue error', err));
+        return;
+      }
+      case Intent.WHERE_ARE_YOU: {
+        try {
+          if (!this.navigator) {
+            await this.safeSend('Navigator not initialized');
+            return;
+          }
+          const pos = this.navigator.getPosition();
+          if (pos) {
+            await this.safeSend(`Je suis en x=${pos.x} y=${pos.y} z=${pos.z}`);
+          } else {
+            await this.safeSend('Position inconnue');
+          }
+        } catch (e) {
+          console.error('[action] where are you failed', e);
+        }
+        return;
+      }
       case Intent.FOLLOW_PLAYER: {
         // create a goal and plan tasks
         const goal = this.goalManager.createGoalFromIntent(Intent.FOLLOW_PLAYER, username);

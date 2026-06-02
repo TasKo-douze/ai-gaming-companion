@@ -22,10 +22,10 @@ export class IntentParser {
     if (s === 'remember me' || s === 'souviens-toi de moi' || s === 'souviens toi de moi') return { intent: Intent.REMEMBER_ME };
     if (s === 'who am i' || s === 'qui suis-je' || s === 'qui suis je') return { intent: Intent.WHO_AM_I };
 
-    // Movement commands
+    // Movement commands - exact phrases requested
     if (s === 'viens ici' || s === 'come here') return { intent: Intent.COME_HERE };
     if (s === 'reste ici' || s === 'stay here') return { intent: Intent.STAY_HERE };
-    if (s === 'où es-tu' || s === "ou es-tu" || s === 'where are you') return { intent: Intent.WHERE_ARE_YOU };
+    if (s === 'où es-tu' || s === 'ou es-tu' || s === 'where are you') return { intent: Intent.WHERE_ARE_YOU };
 
     // Follow commands
     if (s === 'suis-moi' || s === 'follow me' || s === "suis moi") return { intent: Intent.FOLLOW_PLAYER };

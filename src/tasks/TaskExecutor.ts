@@ -87,6 +87,50 @@ export class TaskExecutor {
 
           return;
         }
+        case 'COME_TO_PLAYER': {
+          const username = task.data?.username as string;
+          if (!this.navigator) {
+            await this.safeSend('Navigator not initialized');
+            return;
+          }
+          try {
+            await this.navigator.comeToPlayer(username);
+            // not changing BotState FOLLOWING because this is a one-shot move
+            // memory
+            if (this.memoryManager) {
+              this.memoryManager.rememberEvent({
+                id: `evt-come-${Date.now()}`,
+                type: ("TASK_EXECUTED" as any),
+                timestamp: new Date().toISOString(),
+                username,
+                content: `Came to ${username}`,
+              });
+            }
+          } catch (e) {
+            throw e;
+          }
+          return;
+        }
+        case 'STAY_HERE': {
+          if (!this.navigator) {
+            await this.safeSend('Navigator not initialized');
+            return;
+          }
+          try {
+            await this.navigator.stayHere();
+            if (this.memoryManager) {
+              this.memoryManager.rememberEvent({
+                id: `evt-stay-${Date.now()}`,
+                type: ("TASK_EXECUTED" as any),
+                timestamp: new Date().toISOString(),
+                content: `Staying at current position`,
+              });
+            }
+          } catch (e) {
+            throw e;
+          }
+          return;
+        }
         default:
           // Unknown tasks are ignored
           return;
