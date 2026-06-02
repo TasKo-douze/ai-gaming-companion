@@ -28,6 +28,10 @@ export class GoalManager {
         return this.createGoal(GoalType.FOLLOW_PLAYER, 10, { username });
       case Intent.STOP_FOLLOWING:
         return this.createGoal(GoalType.STOP_FOLLOWING, 20, { username });
+      case Intent.COME_HERE:
+        return this.createGoal(GoalType.COME_HERE, 15, { username });
+      case Intent.STAY_HERE:
+        return this.createGoal(GoalType.STAY_HERE, 20, { username });
       case Intent.HELP:
         return this.createGoal(GoalType.IDLE, 0, { reason: 'help' });
       case Intent.GREETING:
