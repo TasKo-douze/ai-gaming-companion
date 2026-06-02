@@ -12,16 +12,18 @@
   "author": "TasKo-douze",
   "license": "MIT",
   "dependencies": {
-    "axios": "^1.4.0",
     "mineflayer": "^4.0.0",
-    "mineflayer-pathfinder": "^2.4.5",
-    "sqlite3": "^5.1.6"
+    "minecraft-data": "^2.0.0",
+    "mineflayer-pathfinder": "^1.0.9",
+    "sqlite3": "^5.1.6",
+    "better-sqlite3": "^8.4.0",
+    "axios": "^1.4.0"
   },
   "devDependencies": {
-    "@types/jest": "^29.5.0",
-    "@types/node": "^20.3.0",
-    "jest": "^29.5.0",
+    "typescript": "^5.4.0",
     "ts-node": "^10.9.1",
-    "typescript": "^5.4.0"
+    "jest": "^29.5.0",
+    "@types/jest": "^29.5.0",
+    "@types/node": "^20.3.0"
   }
 }

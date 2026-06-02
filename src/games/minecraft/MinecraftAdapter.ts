@@ -2,6 +2,7 @@ import { GameAdapter } from '../GameAdapter';
 import mineflayer, { Bot } from 'mineflayer';
 import { EventEmitter } from 'events';
 import { ChatMessage } from './IMinecraftChat';
+import { MinecraftNavigator } from './MinecraftNavigator';
 
 export interface MinecraftConnectOptions {
   host?: string;
@@ -22,11 +23,13 @@ export interface MinecraftConnectOptions {
  * - ignore messages sent by the bot itself
  * - provide sendChatMessage(message: string)
  * - provide add/remove chat listener helpers
+ * - delegate navigation to MinecraftNavigator (follow/stop)
  */
 export class MinecraftAdapter implements GameAdapter {
   private bot: Bot | null = null;
   private connected = false;
   private emitter = new EventEmitter();
+  private navigator: MinecraftNavigator | null = null;
 
   constructor() {}
 
@@ -48,7 +51,7 @@ export class MinecraftAdapter implements GameAdapter {
 
     return new Promise<void>((resolve, reject) => {
       try {
-        this.bot = mineflayer.createBot({ host, port, username, password, version: "1.20.4" });
+        this.bot = mineflayer.createBot({ host, port, username, password, version: options?.version });
       } catch (err) {
         console.error('[minecraft] failed to create bot', err);
         return reject(err);
@@ -59,6 +62,14 @@ export class MinecraftAdapter implements GameAdapter {
       const onSpawn = () => {
         this.connected = true;
         console.log('[minecraft] bot spawned in the world');
+
+        // Initialize navigator once the bot is spawned
+        try {
+          this.navigator = new MinecraftNavigator(this.bot);
+        } catch (e) {
+          console.error('[minecraft] failed to initialize navigator', e);
+        }
+
         // Keep listeners for runtime; resolve the connect promise now
         resolve();
       };
@@ -86,8 +97,23 @@ export class MinecraftAdapter implements GameAdapter {
         } else if (cmd === 'hello') {
           this.sendChatMessage('hello').catch(err => console.error('[minecraft] failed to send hello', err));
         } else if (cmd === 'help') {
-          this.sendChatMessage('Available commands: ping, hello, help')
+          this.sendChatMessage('Available commands: ping, hello, help, follow me / suis-moi, stop / arrête')
             .catch(err => console.error('[minecraft] failed to send help', err));
+        } else if (cmd === 'suis-moi' || cmd === 'follow me') {
+          // Delegate follow to navigator
+          if (this.navigator) {
+            this.navigator.followPlayer(username).catch(err => console.error('[minecraft] follow failed', err));
+            this.sendChatMessage(`Je te suis, ${username}`).catch(err => console.error('[minecraft] failed to send follow confirmation', err));
+          } else {
+            this.sendChatMessage('Navigator not initialized').catch(() => {});
+          }
+        } else if (cmd === 'stop' || cmd === 'arrête' || cmd === 'arrête de me suivre') {
+          if (this.navigator) {
+            this.navigator.stopFollowing().catch(err => console.error('[minecraft] stop following failed', err));
+            this.sendChatMessage(`J'arrête de te suivre, ${username}`).catch(err => console.error('[minecraft] failed to send stop confirmation', err));
+          } else {
+            this.sendChatMessage('Navigator not initialized').catch(() => {});
+          }
         }
       };
 
@@ -178,6 +204,7 @@ export class MinecraftAdapter implements GameAdapter {
       // Remove reference to allow GC
       this.bot = null;
       this.connected = false;
+      this.navigator = null;
       console.log('[minecraft] bot disconnected');
     }
   }
