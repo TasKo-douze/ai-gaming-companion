@@ -465,58 +465,28 @@ export class MinecraftResourceCollector {
         }
 
         // look and dig with timeout
--        try {
--          const digPromise = new Promise<void>((resolve, reject) => {
--            this.bot.dig(fresh, true, (err: Error | null) => {
--              if (err) return reject(err);
--              resolve();
--            });
--          });
--
--          await this.withTimeout(digPromise, 10000, 'dig connected wood block');
--
--          const after = (this.bot as any).blockAt(this.floorVec(fresh.position));
--          if (!after || after.type === 0) {
--            successCount += 1;
--            console.log(`[collector] collected block count: ${successCount}`);
--            this.cleanupNavigation();
--            if (successCount >= 5) break;
--            continue; // next connected log
--          } else {
--            console.log('[collector] connected log still present after dig, skipping');
--            lastErr = new Error('Connected log still present after dig');
--            this.cleanupNavigation();
--            continue;
--          }
--        } catch (e: unknown) {
--          const err = e instanceof Error ? e : new Error(String(e));
--          console.log(`[collector] dig error for connected log: ${err.message}`);
--          try { if (typeof (this.bot as any).stopDigging === 'function') (this.bot as any).stopDigging(); } catch (ee) {}
--          this.cleanupNavigation();
--          lastErr = err;
--          continue;
--        }
-+        try {
-+          // Use robust dig that treats disappearance as success
-+          const ok = await this.digBlockWithVerification(fresh, 15000);
-+          if (ok) {
-+            successCount += 1;
-+            console.log(`[collector] collected block count: ${successCount}`);
-+            if (successCount >= 5) break;
-+            continue;
-+          } else {
-+            console.log('[collector] connected log not removed after dig, skipping');
-+            lastErr = new Error('Connected log not removed after dig');
-+            continue;
-+          }
-+        } catch (e: unknown) {
-+          const err = e instanceof Error ? e : new Error(String(e));
-+          console.log(`[collector] dig error for connected log: ${err.message}`);
-+          try { if (typeof (this.bot as any).stopDigging === 'function') (this.bot as any).stopDigging(); } catch (ee) {}
-+          this.cleanupNavigation();
-+          lastErr = err;
-+          continue;
-+        }
+
+        try {
+          // Use robust dig that treats disappearance as success
+          const ok = await this.digBlockWithVerification(fresh, 15000);
+          if (ok) {
+            successCount += 1;
+            console.log(`[collector] collected block count: ${successCount}`);
+            if (successCount >= 5) break;
+            continue;
+          } else {
+            console.log('[collector] connected log not removed after dig, skipping');
+            lastErr = new Error('Connected log not removed after dig');
+            continue;
+          }
+        } catch (e: unknown) {
+          const err = e instanceof Error ? e : new Error(String(e));
+          console.log(`[collector] dig error for connected log: ${err.message}`);
+          try { if (typeof (this.bot as any).stopDigging === 'function') (this.bot as any).stopDigging(); } catch (ee) {}
+          this.cleanupNavigation();
+          lastErr = err;
+          continue;
+        }
        }
        catch (e: unknown) {
          const reason = e instanceof Error ? e.message : String(e);
