@@ -3,6 +3,7 @@ import { MinecraftNavigator } from '../games/minecraft/MinecraftNavigator';
 import { BotStateManager, BotState } from '../intents/BotStateManager';
 import { GameAdapter } from '../games/GameAdapter';
 import { MemoryManager } from '../memory/MemoryManager';
+import { MinecraftResourceCollector } from '../games/minecraft/MinecraftResourceCollector';
 
 /**
  * TaskExecutor executes a single Task by delegating to the appropriate subsystem (navigator, adapter).
@@ -12,6 +13,7 @@ export class TaskExecutor {
   private navigator: MinecraftNavigator | null;
   private stateManager: BotStateManager;
   private memoryManager: MemoryManager | null;
+  private resourceCollector: MinecraftResourceCollector | null = null;
 
   constructor(adapter: GameAdapter, navigator: MinecraftNavigator | null, stateManager: BotStateManager, memoryManager?: MemoryManager | null) {
     this.adapter = adapter;
@@ -26,6 +28,10 @@ export class TaskExecutor {
 
   setMemoryManager(mm: MemoryManager | null) {
     this.memoryManager = mm;
+  }
+
+  setResourceCollector(rc: MinecraftResourceCollector | null) {
+    this.resourceCollector = rc;
   }
 
   async execute(task: Task): Promise<void> {
@@ -127,6 +133,32 @@ export class TaskExecutor {
               });
             }
           } catch (e) {
+            throw e;
+          }
+          return;
+        }
+        case 'COLLECT_WOOD': {
+          const username = task.data?.username as string;
+          if (!this.resourceCollector) {
+            await this.safeSend('Resource collector not available');
+            return;
+          }
+          try {
+            await this.resourceCollector.collectWood(username);
+            // notify success
+            try { await this.adapter.sendChatMessage("J'ai trouvé et cassé un bloc de bois."); } catch(e){}
+            if (this.memoryManager) {
+              this.memoryManager.rememberEvent({
+                id: `evt-collectwood-${Date.now()}`,
+                type: ("TASK_EXECUTED" as any),
+                timestamp: new Date().toISOString(),
+                username,
+                content: `Collected wood for ${username}`,
+              });
+            }
+          } catch (e) {
+            const errMsg = (e as Error).message || 'Failed to collect wood';
+            try { await this.adapter.sendChatMessage(`Échec: ${errMsg}`); } catch(e){}
             throw e;
           }
           return;

@@ -43,3 +43,13 @@ export function createStayHereTask(): StayHereTask {
     priority: 20,
   } as StayHereTask;
 }
+
+export type CollectWoodTask = Task & { name: 'COLLECT_WOOD'; data: { username: string } };
+export function createCollectWoodTask(username: string): CollectWoodTask {
+  return {
+    id: `collect-wood-${username}-${Date.now()}`,
+    name: 'COLLECT_WOOD',
+    data: { username },
+    priority: 5,
+  } as CollectWoodTask;
+}

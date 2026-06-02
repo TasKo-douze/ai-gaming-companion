@@ -1,6 +1,6 @@
 import { Intent } from '../intents/Intent';
 import { Task } from './Task';
-import { createFollowPlayerTask, createStopFollowingTask, createComeToPlayerTask, createStayHereTask } from './TaskTypes';
+import { createFollowPlayerTask, createStopFollowingTask, createComeToPlayerTask, createStayHereTask, createCollectWoodTask } from './TaskTypes';
 
 export class TaskPlanner {
   constructor() {}
@@ -18,6 +18,8 @@ export class TaskPlanner {
         return [createComeToPlayerTask(username)];
       case Intent.STAY_HERE:
         return [createStayHereTask()];
+      case Intent.COLLECT_WOOD:
+        return [createCollectWoodTask(username)];
       default:
         return [];
     }

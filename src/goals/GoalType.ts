@@ -5,4 +5,5 @@ export enum GoalType {
   IDLE = 'IDLE',
   COME_HERE = 'COME_HERE',
   STAY_HERE = 'STAY_HERE',
+  COLLECT_WOOD = 'COLLECT_WOOD',
 }

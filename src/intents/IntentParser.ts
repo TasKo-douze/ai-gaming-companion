@@ -27,6 +27,15 @@ export class IntentParser {
     if (s === 'reste ici' || s === 'stay here') return { intent: Intent.STAY_HERE };
     if (s === 'où es-tu' || s === 'ou es-tu' || s === 'where are you') return { intent: Intent.WHERE_ARE_YOU };
 
+    // Collect wood
+    if (
+      s === 'coupe du bois' ||
+      s === 'collect wood' ||
+      s === 'va chercher du bois' ||
+      s === 'get wood'
+    )
+      return { intent: Intent.COLLECT_WOOD };
+
     // Follow commands
     if (s === 'suis-moi' || s === 'follow me' || s === "suis moi") return { intent: Intent.FOLLOW_PLAYER };
 
