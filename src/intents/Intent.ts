@@ -4,5 +4,7 @@ export enum Intent {
   HELP = 'HELP',
   GREETING = 'GREETING',
   UNKNOWN = 'UNKNOWN',
-  PING = 'PING'
+  PING = 'PING',
+  REMEMBER_ME = 'REMEMBER_ME',
+  WHO_AM_I = 'WHO_AM_I'
 }

@@ -6,6 +6,7 @@ import { TaskPlanner } from '../tasks/TaskPlanner';
 import { TaskQueue } from '../tasks/TaskQueue';
 import { TaskExecutor } from '../tasks/TaskExecutor';
 import { GoalManager } from '../goals/GoalManager';
+import { MemoryManager } from '../memory/MemoryManager';
 
 export class ActionExecutor {
   private adapter: GameAdapter;
@@ -16,6 +17,7 @@ export class ActionExecutor {
   private taskQueue: TaskQueue;
   private taskExecutor: TaskExecutor;
   private goalManager: GoalManager;
+  private memoryManager: MemoryManager;
 
   private processing = false;
 
@@ -26,7 +28,8 @@ export class ActionExecutor {
     taskPlanner: TaskPlanner,
     taskQueue: TaskQueue,
     taskExecutor: TaskExecutor,
-    goalManager: GoalManager
+    goalManager: GoalManager,
+    memoryManager: MemoryManager
   ) {
     this.adapter = adapter;
     this.navigator = navigator;
@@ -35,6 +38,7 @@ export class ActionExecutor {
     this.taskQueue = taskQueue;
     this.taskExecutor = taskExecutor;
     this.goalManager = goalManager;
+    this.memoryManager = memoryManager;
   }
 
   setNavigator(nav: MinecraftNavigator | null) {
@@ -43,6 +47,19 @@ export class ActionExecutor {
   }
 
   async execute(intent: Intent, username: string): Promise<void> {
+    // remember the intent
+    try {
+      this.memoryManager.rememberEvent({
+        id: `evt-intent-${Date.now()}`,
+        type: ("INTENT_DETECTED" as any),
+        timestamp: new Date().toISOString(),
+        username,
+        content: intent,
+      });
+    } catch (e) {
+      // ignore
+    }
+
     switch (intent) {
       case Intent.PING:
         await this.safeSend('pong');
@@ -53,6 +70,33 @@ export class ActionExecutor {
       case Intent.HELP:
         await this.safeSend('Available commands: ping, hello, help, follow me / suis-moi, stop / arrête');
         return;
+      case Intent.REMEMBER_ME: {
+        try {
+          this.memoryManager.rememberPlayerFact(username, 'remembered', true);
+          this.memoryManager.rememberEvent({
+            id: `evt-remember-${Date.now()}`,
+            type: ("INTENT_DETECTED" as any),
+            timestamp: new Date().toISOString(),
+            username,
+            content: 'remember_me',
+          });
+          await this.safeSend('Je me souviendrai de toi.');
+        } catch (e) {
+          console.error('[action] remember me failed', e);
+        }
+        return;
+      }
+      case Intent.WHO_AM_I: {
+        try {
+          const facts = this.memoryManager.getPlayerFacts(username);
+          const remembered = facts['remembered'] ? 'Yes' : 'No';
+          const lastFollow = facts['lastFollowedAt'] || 'never';
+          await this.safeSend(`You are ${username}. remembered=${remembered}. lastFollowedAt=${lastFollow}`);
+        } catch (e) {
+          console.error('[action] who am i failed', e);
+        }
+        return;
+      }
       case Intent.FOLLOW_PLAYER: {
         // create a goal and plan tasks
         const goal = this.goalManager.createGoalFromIntent(Intent.FOLLOW_PLAYER, username);
@@ -111,10 +155,35 @@ export class ActionExecutor {
           await this.taskExecutor.execute(task);
           const goalId = task.data?.goalId as string | undefined;
           if (goalId) this.goalManager.markCompleted(goalId);
+
+          // memory: record task executed
+          try {
+            this.memoryManager.rememberEvent({
+              id: `evt-task-${Date.now()}`,
+              type: ("TASK_EXECUTED" as any),
+              timestamp: new Date().toISOString(),
+              username: task.data?.username,
+              metadata: { taskName: task.name, goalId: task.data?.goalId },
+            });
+          } catch (e) {
+            // ignore
+          }
         } catch (err) {
           console.error('[action] task execution failed', err);
           const goalId = task.data?.goalId as string | undefined;
           if (goalId) this.goalManager.markFailed(goalId, (err as Error).message);
+
+          try {
+            this.memoryManager.rememberEvent({
+              id: `evt-task-failed-${Date.now()}`,
+              type: ("TASK_EXECUTED" as any),
+              timestamp: new Date().toISOString(),
+              username: task.data?.username,
+              metadata: { taskName: task.name, goalId: task.data?.goalId, error: (err as Error).message },
+            });
+          } catch (e) {
+            // ignore
+          }
         }
       }
     } finally {
