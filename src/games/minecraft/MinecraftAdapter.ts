@@ -48,7 +48,7 @@ export class MinecraftAdapter implements GameAdapter {
 
     return new Promise<void>((resolve, reject) => {
       try {
-        this.bot = mineflayer.createBot({ host, port, username, password, version: options?.version });
+        this.bot = mineflayer.createBot({ host, port, username, password, version: "1.20.4" });
       } catch (err) {
         console.error('[minecraft] failed to create bot', err);
         return reject(err);
