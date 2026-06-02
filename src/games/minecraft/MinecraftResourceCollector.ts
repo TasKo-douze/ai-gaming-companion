@@ -107,23 +107,15 @@ export class MinecraftResourceCollector {
         } catch (e) {
           // ignore
         }
-        try {
-          (this.bot as any).pathfinder.setGoal(null);
-        } catch (e) {
-          // ignore
-        }
+        try { (this.bot as any).pathfinder.setGoal(null); } catch (e) { /* ignore */ }
       }
-    } catch (e) {
-      // ignore
-    }
+    } catch (e) { /* ignore */ }
 
     try {
       if (typeof (this.bot as any).stopDigging === 'function') {
         try { (this.bot as any).stopDigging(); } catch (e) { /* ignore */ }
       }
-    } catch (e) {
-      // ignore
-    }
+    } catch (e) { /* ignore */ }
   }
 
   cancel(): void {
@@ -132,11 +124,100 @@ export class MinecraftResourceCollector {
       if (typeof (this.bot as any).stopDigging === 'function') {
         try { (this.bot as any).stopDigging(); } catch (e) { /* ignore */ }
       }
-    } catch (e) {}
+    } catch (e) { /* ignore */ }
     this.cleanupNavigation();
   }
 
-  async collectWood(username?: string): Promise<void> {
+  /**
+   * Find connected log blocks starting from startBlock using BFS.
+   * Returns array of block objects (max maxBlocks)
+   */
+  private findConnectedLogs(startBlock: any, maxBlocks = 5, maxSearchRadius = 4, maxVerticalDistance = 6): any[] {
+    const startPos = startBlock.position;
+    const startKey = `${Math.floor(startPos.x)},${Math.floor(startPos.y)},${Math.floor(startPos.z)}`;
+
+    const mcData = mcDataLib(this.bot.version as string);
+    const isLogName = (name: string) => /log|wood|stem|trunk/i.test(name);
+
+    const visited = new Set<string>();
+    const results: any[] = [];
+    const queue: any[] = [startBlock];
+
+    visited.add(startKey);
+
+    const sqRadius = maxSearchRadius * maxSearchRadius;
+
+    while (queue.length && results.length < maxBlocks) {
+      const blk = queue.shift();
+      if (!blk || !blk.position) continue;
+      const bx = Math.floor(blk.position.x);
+      const by = Math.floor(blk.position.y);
+      const bz = Math.floor(blk.position.z);
+
+      // vertical limit
+      if (Math.abs(by - Math.floor(startPos.y)) > maxVerticalDistance) continue;
+
+      // radius limit
+      const dx = bx - Math.floor(startPos.x);
+      const dz = bz - Math.floor(startPos.z);
+      if (dx * dx + dz * dz > sqRadius) continue;
+
+      // check it's a log-like block
+      const name = (mcData.blocks as any)[blk.type]?.name || '';
+      if (!name || !isLogName(String(name))) continue;
+
+      // add to results if not already
+      const key = `${bx},${by},${bz}`;
+      if (!visited.has(key)) visited.add(key);
+      if (!results.find(r => Math.floor(r.position.x) === bx && Math.floor(r.position.y) === by && Math.floor(r.position.z) === bz)) {
+        results.push(blk);
+      }
+
+      // explore neighbors (6-direction)
+      const neighOffsets = [
+        { x: 1, y: 0, z: 0 },
+        { x: -1, y: 0, z: 0 },
+        { x: 0, y: 1, z: 0 },
+        { x: 0, y: -1, z: 0 },
+        { x: 0, y: 0, z: 1 },
+        { x: 0, y: 0, z: -1 },
+      ];
+
+      for (const off of neighOffsets) {
+        const nx = bx + off.x;
+        const ny = by + off.y;
+        const nz = bz + off.z;
+        const nkey = `${nx},${ny},${nz}`;
+        if (visited.has(nkey)) continue;
+        visited.add(nkey);
+        const neighbor = (this.bot as any).blockAt(new Vec3(nx, ny, nz));
+        if (!neighbor || !neighbor.type) continue;
+        const nname = (mcData.blocks as any)[neighbor.type]?.name || '';
+        if (!nname) continue;
+        if (/leaf|leaves?/i.test(nname)) continue; // skip leaves
+        if (!isLogName(String(nname))) continue;
+        // add to queue
+        queue.push(neighbor);
+      }
+    }
+
+    // ensure results unique and limited
+    const unique = results
+      .map((r: any) => ({
+        pos: { x: Math.floor(r.position.x), y: Math.floor(r.position.y), z: Math.floor(r.position.z) },
+        block: r,
+      }))
+      .slice(0, maxBlocks);
+
+    // map back to blocks
+    return unique.map(u => u.block);
+  }
+
+  /**
+   * Collect connected logs starting from the nearest accessible log.
+   * Returns number of blocks successfully cut.
+   */
+  async collectWood(username?: string): Promise<number> {
     if (!this.bot) throw new Error('Bot not initialized');
     this.cancelled = false;
 
@@ -146,50 +227,73 @@ export class MinecraftResourceCollector {
       throw new Error('No wood found nearby');
     }
 
-    const sorted = candidates
-      .slice()
-      .sort((a: any, b: any) => {
-        const da = this.distanceSqToBot(a.position);
-        const db = this.distanceSqToBot(b.position);
-        if (da !== db) return da - db;
-        return a.position.y - b.position.y;
-      });
-
-    try {
-      if (!(this.bot as any).pathfinder) {
-        (this.bot as any).loadPlugin(pathfinder);
+    // choose first accessible and diggable candidate
+    let root: any | null = null;
+    for (const blk of candidates) {
+      if (this.cancelled) break;
+      const mcData = mcDataLib(this.bot.version as string);
+      const name = (mcData.blocks as any)[blk.type]?.name || 'unknown';
+      const dist = Math.sqrt(this.distanceSqToBot(blk.position));
+      if (dist > 6) continue;
+      const botY = this.bot.entity?.position?.y ?? 0;
+      if (blk.position.y - botY > 4) continue;
+      const fresh = (this.bot as any).blockAt(this.floorVec(blk.position));
+      if (!fresh || fresh.type === 0) continue;
+      const freshName = (mcData.blocks as any)[fresh.type]?.name || '';
+      if (/leaf|leaves?/i.test(freshName)) continue;
+      if (typeof (this.bot as any).canDigBlock === 'function') {
+        try {
+          const canDig = (this.bot as any).canDigBlock(fresh);
+          if (!canDig) continue;
+        } catch (e) { /* ignore, assume diggable */ }
       }
+      // found root
+      root = fresh;
+      break;
+    }
+
+    if (!root) throw new Error('No accessible log found');
+
+    const rootPos = { x: Math.floor(root.position.x), y: Math.floor(root.position.y), z: Math.floor(root.position.z) };
+    console.log(`[collector] selected tree root at ${rootPos.x},${rootPos.y},${rootPos.z}`);
+
+    // find connected logs (BFS)
+    const connected = this.findConnectedLogs(root, 5, 4, 6);
+    console.log(`[collector] connected logs found: ${connected.length}`);
+    if (!connected.length) throw new Error('No connected logs found');
+
+    // sort blocks: lowest y first, then by distance to root
+    connected.sort((a: any, b: any) => {
+      const ay = Math.floor(a.position.y);
+      const by = Math.floor(b.position.y);
+      if (ay !== by) return ay - by;
+      const da = this.distanceSqToBot(a.position);
+      const db = this.distanceSqToBot(b.position);
+      return da - db;
+    });
+
+    // ensure pathfinder exists
+    try {
+      if (!(this.bot as any).pathfinder) { (this.bot as any).loadPlugin(pathfinder); }
       const mcData = mcDataLib(this.bot.version as string);
       const movements = new Movements(this.bot, mcData);
       (this.bot as any).pathfinder.setMovements(movements);
-    } catch (e) {
-      console.error('[collector] failed to setup pathfinder', e);
-    }
+    } catch (e) { /* ignore */ }
 
+    let successCount = 0;
     let lastErr: Error | null = null;
 
-    for (const blk of sorted) {
+    for (const blk of connected) {
       if (this.cancelled) break;
       try {
+        const bx = Math.floor(blk.position.x);
+        const by = Math.floor(blk.position.y);
+        const bz = Math.floor(blk.position.z);
         const mcData = mcDataLib(this.bot.version as string);
         const name = (mcData.blocks as any)[blk.type]?.name || 'unknown';
-        console.log(`[collector] trying wood block ${name} at ${blk.position.x},${blk.position.y},${blk.position.z}`);
+        console.log(`[collector] cutting connected log ${name} at ${bx},${by},${bz}`);
 
-        const distSq = this.distanceSqToBot(blk.position);
-        const dist = Math.sqrt(distSq);
-        console.log(`[collector] distance to wood block: ${dist.toFixed(2)}`);
-        // if too far even after moving, skip
-        if (dist > 6) {
-          console.log('[collector] candidate too far, skipping');
-          continue;
-        }
-
-        const botY = this.bot.entity?.position?.y ?? 0;
-        if (blk.position.y - botY > 4) {
-          console.log('[collector] candidate too high, skipping');
-          continue;
-        }
-
+        // compute stand position around block
         const standOffsets = [
           { x: 1, z: 0 },
           { x: -1, z: 0 },
@@ -201,33 +305,31 @@ export class MinecraftResourceCollector {
 
         let standPos: { x: number; y: number; z: number } | null = null;
         for (const off of standOffsets) {
-          const px = blk.position.x + off.x;
-          const pz = blk.position.z + off.z;
-          const py = blk.position.y;
+          const px = bx + off.x;
+          const pz = bz + off.z;
+          const py = by;
           const blockBelow = (this.bot as any).blockAt(this.floorVec({ x: px, y: py - 1, z: pz }));
           const blockAtFeet = (this.bot as any).blockAt(this.floorVec({ x: px, y: py, z: pz }));
           const blockHead = (this.bot as any).blockAt(this.floorVec({ x: px, y: py + 1, z: pz }));
           const belowSolid = blockBelow && blockBelow.type !== 0;
           const feetEmpty = !blockAtFeet || blockAtFeet.type === 0;
           const headEmpty = !blockHead || blockHead.type === 0;
-          if (belowSolid && feetEmpty && headEmpty) {
-            standPos = { x: px, y: py, z: pz };
-            break;
-          }
+          if (belowSolid && feetEmpty && headEmpty) { standPos = { x: px, y: py, z: pz }; break; }
         }
 
         if (!standPos) {
-          console.log('[collector] no accessible stand position found near candidate, skipping');
+          console.log('[collector] no stand position near connected log, skipping');
+          this.cleanupNavigation();
           continue;
         }
 
+        // move near target standPos
         try {
-          console.log('[collector] moving near wood block');
           const goal = new goals.GoalNear(standPos.x, standPos.y, standPos.z, 1);
           (this.bot as any).pathfinder.setGoal(goal, true);
-          await this.waitUntilNear(standPos, 1.5, 30000);
+          await this.waitUntilNear(standPos, 1.5, 20000);
         } catch (e) {
-          console.log('[collector] failed to move to candidate, skipping');
+          console.log('[collector] failed to move to connected log, skipping');
           this.cleanupNavigation();
           continue;
         }
@@ -235,57 +337,25 @@ export class MinecraftResourceCollector {
         if (this.cancelled) break;
 
         const fresh = (this.bot as any).blockAt(this.floorVec(blk.position));
-        if (!fresh || fresh.type === 0) {
-          console.log('[collector] candidate disappeared, trying next');
-          this.cleanupNavigation();
-          continue;
-        }
-
-        const freshName = (mcDataLib(this.bot.version as string).blocks as any)[fresh.type]?.name || 'unknown';
-        if (/leaf|leaves?/i.test(String(freshName))) {
-          console.log('[collector] candidate is leaves, skipping');
-          this.cleanupNavigation();
-          continue;
-        }
+        if (!fresh || fresh.type === 0) { console.log('[collector] connected log disappeared, skipping'); this.cleanupNavigation(); continue; }
 
         if (typeof (this.bot as any).canDigBlock === 'function') {
-          const canDig = (this.bot as any).canDigBlock(fresh);
-          console.log(`[collector] canDigBlock: ${canDig}`);
-          if (!canDig) {
-            console.log('[collector] cannot dig this block, skipping');
-            this.cleanupNavigation();
-            continue;
-          }
-        } else {
-          console.log('[collector] canDigBlock: unknown');
+          try {
+            const canDig = (this.bot as any).canDigBlock(fresh);
+            console.log(`[collector] canDigBlock: ${canDig}`);
+            if (!canDig) { console.log('[collector] cannot dig this connected log, skipping'); this.cleanupNavigation(); continue; }
+          } catch (e) { /* ignore */ }
         }
 
-        // final distance check
-        const afterDist = Math.sqrt(this.distanceSqToBot(fresh.position));
-        console.log(`[collector] distance to wood block: ${afterDist.toFixed(2)}`);
-        if (afterDist > 4) {
-          console.log('[collector] still too far to dig, skipping');
-          this.cleanupNavigation();
-          continue;
-        }
-
-        // lookAt
+        // look and dig with timeout
         try {
-          console.log('[collector] lookAt wood block');
           await (this.bot as any).lookAt(fresh.position.offset(0.5, 0.5, 0.5), true);
-          // brief pause to allow look to settle
-          await new Promise(r => setTimeout(r, 200));
+          await new Promise(r => setTimeout(r, 150));
         } catch (e) {
-          console.log('[collector] lookAt failed, skipping candidate');
-          this.cleanupNavigation();
-          continue;
+          console.log('[collector] lookAt failed for connected log, skipping'); this.cleanupNavigation(); continue;
         }
 
-        if (this.cancelled) break;
-
-        // dig with timeout
         try {
-          console.log('[collector] dig started');
           const digPromise = new Promise<void>((resolve, reject) => {
             this.bot.dig(fresh, true, (err: Error | null) => {
               if (err) return reject(err);
@@ -293,54 +363,47 @@ export class MinecraftResourceCollector {
             });
           });
 
-          await this.withTimeout(digPromise, 10000, 'dig wood block');
-          console.log('[collector] dig finished');
+          await this.withTimeout(digPromise, 10000, 'dig connected wood block');
 
           const after = (this.bot as any).blockAt(this.floorVec(fresh.position));
           if (!after || after.type === 0) {
+            successCount += 1;
+            console.log(`[collector] collected block count: ${successCount}`);
             this.cleanupNavigation();
-            console.log('[collector] wood block collected');
-            return;
+            if (successCount >= 5) break;
+            continue; // next connected log
           } else {
-            console.log('[collector] wood block still present after dig');
-            lastErr = new Error('Block still present after dig');
+            console.log('[collector] connected log still present after dig, skipping');
+            lastErr = new Error('Connected log still present after dig');
             this.cleanupNavigation();
             continue;
           }
         } catch (e: unknown) {
           const err = e instanceof Error ? e : new Error(String(e));
-          const msg = err.message || String(err);
-          if (msg.includes('timed out')) {
-            console.log('[collector] dig timed out');
-          } else {
-            console.log(`[collector] dig error: ${msg}`);
-          }
-          // attempt to stop digging and cleanup
-          try {
-            if (typeof (this.bot as any).stopDigging === 'function') {
-              try { (this.bot as any).stopDigging(); } catch (err) { /* ignore */ }
-            }
-          } catch (err) {}
+          console.log(`[collector] dig error for connected log: ${err.message}`);
+          try { if (typeof (this.bot as any).stopDigging === 'function') (this.bot as any).stopDigging(); } catch (ee) {}
           this.cleanupNavigation();
-          lastErr = err instanceof Error ? err : new Error(String(err));
+          lastErr = err;
           continue;
-        } finally {
-          // defensive cleanup for candidate
-          try { this.cleanupNavigation(); } catch (e) { /* ignore */ }
         }
       } catch (e: unknown) {
         const reason = e instanceof Error ? e.message : String(e);
-        console.log(`[collector] candidate failed: ${reason}`);
+        console.log(`[collector] connected candidate failed: ${reason}`);
         lastErr = e instanceof Error ? e : new Error(String(e));
-        try { this.cleanupNavigation(); } catch (err) { /* ignore */ }
+        try { this.cleanupNavigation(); } catch (ee) {}
         continue;
       }
     }
 
-    if (lastErr) {
-      throw new Error('Failed to collect wood from available candidates');
+    console.log('[collector] collection finished');
+
+    if (this.cancelled) {
+      // interrupted by user
+      return successCount;
     }
 
-    throw new Error('Failed to collect wood from available candidates');
+    if (successCount > 0) return successCount;
+    if (lastErr) throw lastErr;
+    throw new Error('Failed to collect wood from connected logs');
   }
 }
