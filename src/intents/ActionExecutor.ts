@@ -2,20 +2,44 @@ import { Intent } from './Intent';
 import { BotStateManager, BotState } from './BotStateManager';
 import { GameAdapter } from '../games/GameAdapter';
 import { MinecraftNavigator } from '../games/minecraft/MinecraftNavigator';
+import { TaskPlanner } from '../tasks/TaskPlanner';
+import { TaskQueue } from '../tasks/TaskQueue';
+import { TaskExecutor } from '../tasks/TaskExecutor';
+import { GoalManager } from '../goals/GoalManager';
 
 export class ActionExecutor {
   private adapter: GameAdapter;
   private navigator: MinecraftNavigator | null;
   private stateManager: BotStateManager;
 
-  constructor(adapter: GameAdapter, navigator: MinecraftNavigator | null, stateManager: BotStateManager) {
+  private taskPlanner: TaskPlanner;
+  private taskQueue: TaskQueue;
+  private taskExecutor: TaskExecutor;
+  private goalManager: GoalManager;
+
+  private processing = false;
+
+  constructor(
+    adapter: GameAdapter,
+    navigator: MinecraftNavigator | null,
+    stateManager: BotStateManager,
+    taskPlanner: TaskPlanner,
+    taskQueue: TaskQueue,
+    taskExecutor: TaskExecutor,
+    goalManager: GoalManager
+  ) {
     this.adapter = adapter;
     this.navigator = navigator;
     this.stateManager = stateManager;
+    this.taskPlanner = taskPlanner;
+    this.taskQueue = taskQueue;
+    this.taskExecutor = taskExecutor;
+    this.goalManager = goalManager;
   }
 
   setNavigator(nav: MinecraftNavigator | null) {
     this.navigator = nav;
+    this.taskExecutor.setNavigator(nav);
   }
 
   async execute(intent: Intent, username: string): Promise<void> {
@@ -29,36 +53,72 @@ export class ActionExecutor {
       case Intent.HELP:
         await this.safeSend('Available commands: ping, hello, help, follow me / suis-moi, stop / arrête');
         return;
-      case Intent.FOLLOW_PLAYER:
-        if (!this.navigator) {
-          await this.safeSend('Navigator not initialized');
+      case Intent.FOLLOW_PLAYER: {
+        // create a goal and plan tasks
+        const goal = this.goalManager.createGoalFromIntent(Intent.FOLLOW_PLAYER, username);
+        if (!goal) {
+          await this.safeSend('Unable to create follow goal');
           return;
         }
-        try {
-          await this.navigator.followPlayer(username);
-          this.stateManager.setState(BotState.FOLLOWING, username);
-        } catch (e) {
-          console.error('[action] followPlayer error', e);
-          await this.safeSend(`Failed to follow ${username}`);
-        }
+        this.goalManager.setActive(goal.id);
+
+        const tasks = this.taskPlanner.plan(Intent.FOLLOW_PLAYER, username);
+        tasks.forEach(t => {
+          t.data = { ...(t.data || {}), goalId: goal.id };
+          this.taskQueue.push(t);
+        });
+
+        // immediate confirmation to user for UX parity
+        await this.safeSend(`Je te suis, ${username}`);
+
+        // process the queue
+        this.processQueue().catch(err => console.error('[action] processQueue error', err));
         return;
-      case Intent.STOP_FOLLOWING:
-        if (!this.navigator) {
-          await this.safeSend('Navigator not initialized');
+      }
+      case Intent.STOP_FOLLOWING: {
+        const goal = this.goalManager.createGoalFromIntent(Intent.STOP_FOLLOWING, username);
+        if (!goal) {
+          await this.safeSend('Unable to create stop goal');
           return;
         }
-        try {
-          await this.navigator.stopFollowing();
-          this.stateManager.setState(BotState.IDLE, null);
-        } catch (e) {
-          console.error('[action] stopFollowing error', e);
-          await this.safeSend('Failed to stop following');
-        }
+        this.goalManager.setActive(goal.id);
+
+        const tasks = this.taskPlanner.plan(Intent.STOP_FOLLOWING, username);
+        tasks.forEach(t => {
+          t.data = { ...(t.data || {}), goalId: goal.id };
+          this.taskQueue.push(t);
+        });
+
+        await this.safeSend(`J'arrête de te suivre, ${username}`);
+        this.processQueue().catch(err => console.error('[action] processQueue error', err));
         return;
+      }
       case Intent.UNKNOWN:
       default:
         // unknown intent -> no action
         return;
+    }
+  }
+
+  private async processQueue(): Promise<void> {
+    if (this.processing) return;
+    this.processing = true;
+    try {
+      while (!this.taskQueue.isEmpty()) {
+        const task = this.taskQueue.pop();
+        if (!task) break;
+        try {
+          await this.taskExecutor.execute(task);
+          const goalId = task.data?.goalId as string | undefined;
+          if (goalId) this.goalManager.markCompleted(goalId);
+        } catch (err) {
+          console.error('[action] task execution failed', err);
+          const goalId = task.data?.goalId as string | undefined;
+          if (goalId) this.goalManager.markFailed(goalId, (err as Error).message);
+        }
+      }
+    } finally {
+      this.processing = false;
     }
   }
 
